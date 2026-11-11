@@ -9,6 +9,7 @@ vi.mock('@discordjs/voice', async () => {
 
   class FakePlayer extends EventEmitter {
     resource: unknown = null;
+    state = { status: 'idle' };
     play(resource: unknown) {
       this.resource = resource;
     }
@@ -61,6 +62,8 @@ vi.mock('@discordjs/voice', async () => {
       inputType: options.inputType,
       metadata: options.metadata,
       playbackDuration: 0,
+      playStream: stream,
+      edges: [],
     }),
     joinVoiceChannel: () => new FakeConnection(),
     entersState: () => Promise.resolve(),

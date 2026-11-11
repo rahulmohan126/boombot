@@ -88,6 +88,24 @@ services:
       - ./data:/boombot/data
 ```
 
+## Logging
+
+Logs go to stdout (so `docker logs` shows them) and to rotated JSON files in `data/logs/`
+(`boombot.<date>.<n>.log`, rotated daily or at 10 MB, 14 files kept).
+
+| Setting                                   | Default  | Purpose                                                      |
+| ----------------------------------------- | -------- | ------------------------------------------------------------ |
+| `LOG_LEVEL` (env or `settings.json`)      | `info`   | Console level: `trace` `debug` `info` `warn` `error` `fatal` |
+| `LOG_FILE_LEVEL` (env or `settings.json`) | `debug`  | File level                                                   |
+| `LOG_FORMAT` (env)                        | `pretty` | `json` for raw JSON on the console                           |
+
+Environment variables win over `settings.json`. Searching the files:
+
+```sh
+grep -h "guildId\":\"123" data/logs/*.log
+jq -c 'select(.level == "error" or .level == "fatal")' data/logs/*.log
+```
+
 ## Development
 
 | Script              | Description                             |

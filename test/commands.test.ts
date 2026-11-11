@@ -281,7 +281,6 @@ describe('play', () => {
   ])('reports %s', async (_, error, message) => {
     const { ctx, notices, youtube, queue } = fakeContext({ options: { query: 'song' } });
     youtube.resolve.mockRejectedValue(error);
-    vi.spyOn(console, 'error').mockImplementation(() => {});
     await run('play', ctx);
     expect(notices).toEqual([{ text: message, tone: 'error' }]);
     expect(queue.connect).not.toHaveBeenCalled();
@@ -339,7 +338,6 @@ describe('play', () => {
     const { ctx, queue, notices, youtube } = fakeContext({ options: { query: 'song' } });
     youtube.resolve.mockResolvedValue({ kind: 'video', video });
     queue.connect.mockRejectedValue(new Error('timeout'));
-    vi.spyOn(console, 'error').mockImplementation(() => {});
     await run('play', ctx);
     expect(notices).toEqual([{ text: 'Could not join voice channel', tone: 'error' }]);
     expect(queue.enqueue).not.toHaveBeenCalled();

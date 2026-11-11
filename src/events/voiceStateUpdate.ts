@@ -1,6 +1,9 @@
 import type { VoiceState } from 'discord.js';
 import type { BoomBot } from '../bot.js';
 import { notice } from '../ui/embeds.js';
+import { getLogger } from '../logger.js';
+
+const log = getLogger('events');
 
 /**
  * Leaves the voice channel once everyone else has left it
@@ -26,6 +29,7 @@ export async function onVoiceStateUpdate(
   if (listeners.size > 0) return;
 
   const textChannel = queue.textChannel;
+  log.info({ guildId: newState.guild.id }, 'Everyone left the voice channel; stopping music');
   queue.stop();
   await textChannel?.send(notice('⏹ Music stopped since everyone left the channel.', 'info'));
 }

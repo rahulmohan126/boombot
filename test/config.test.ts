@@ -33,6 +33,8 @@ describe('loadConfig', () => {
       ownerId: '2',
       defaultPrefix: '?',
       proxy: 'http://127.0.0.1:8080',
+      logLevel: null,
+      logFileLevel: null,
       cookies: [{ name: 'SID', value: 'abc', domain: '.youtube.com' }],
     });
   });

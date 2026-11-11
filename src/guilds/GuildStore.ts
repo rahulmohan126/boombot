@@ -1,6 +1,9 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { z } from 'zod';
+import { getLogger } from '../logger.js';
+
+const log = getLogger('guilds');
 
 const settingsSchema = z.object({
   prefix: z.string(),
@@ -36,8 +39,9 @@ export class GuildStore {
     for (const [guildId, value] of Object.entries(raw)) {
       const parsed = settingsSchema.safeParse({ prefix: this.defaultPrefix, ...(value as object) });
       if (parsed.success) this.#settings.set(guildId, parsed.data);
-      else console.warn(`Ignoring invalid settings for guild ${guildId}`);
+      else log.warn({ guildId }, 'Ignoring invalid settings for guild');
     }
+    log.debug({ guilds: this.#settings.size, path: this.path }, 'Guild settings loaded');
   }
 
   get(guildId: string): GuildSettings | undefined {
@@ -52,6 +56,7 @@ export class GuildStore {
     if (!settings) {
       settings = settingsSchema.parse({ prefix: this.defaultPrefix });
       this.#settings.set(guildId, settings);
+      log.info({ guildId }, 'Created default guild settings');
       void this.save();
     }
     return settings;
@@ -67,10 +72,11 @@ export class GuildStore {
       const temp = `${this.path}.tmp`;
       await writeFile(temp, data);
       await rename(temp, this.path);
+      log.debug({ path: this.path }, 'Guild settings saved');
     };
 
     this.#pendingWrite = this.#pendingWrite.then(write, write).catch((err: unknown) => {
-      console.error('Failed to save guild settings:', err);
+      log.error({ err, path: this.path }, 'Failed to save guild settings');
     });
     return this.#pendingWrite;
   }

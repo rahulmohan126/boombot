@@ -12,6 +12,8 @@ import {
   type VoiceConnection,
 } from '@discordjs/voice';
 import type { SendableChannels, VoiceBasedChannel } from 'discord.js';
+import { getLogger } from '../logger.js';
+import { PlaybackMonitor, type PlaybackSample } from './PlaybackMonitor.js';
 import type { AudioSource, AudioStream } from '../youtube/YouTubeService.js';
 import type { Track } from './Track.js';
 
@@ -56,6 +58,8 @@ export class MusicQueue extends EventEmitter<QueueEvents> {
   /** Incremented on every track change so stale async loads can tell they were superseded */
   #generation = 0;
   #idleTimer: NodeJS.Timeout | null = null;
+  #monitor: PlaybackMonitor | null = null;
+  readonly #log;
 
   constructor(
     readonly guildId: string,
@@ -63,10 +67,15 @@ export class MusicQueue extends EventEmitter<QueueEvents> {
     private readonly idleTimeoutMs = IDLE_TIMEOUT_MS,
   ) {
     super();
+    this.#log = getLogger('music', { guildId });
     this.#player = createAudioPlayer();
     this.#player.on(AudioPlayerStatus.Idle, () => this.#onTrackFinished());
+    this.#player.on('stateChange', (from, to) =>
+      this.#log.debug({ from: from.status, to: to.status }, 'Audio player state changed'),
+    );
+    this.#player.on('debug', (message) => this.#log.trace(message));
     this.#player.on('error', (err) =>
-      console.error(`[${guildId}] Audio player error:`, err.message),
+      this.#log.error({ err, track: err.resource.metadata }, 'Audio player error'),
     );
   }
 
@@ -128,13 +137,19 @@ export class MusicQueue extends EventEmitter<QueueEvents> {
     this.#connection = connection;
     this.#voiceChannelId = voiceChannel.id;
     this.textChannel = textChannel;
+    this.#log.info({ voiceChannelId: voiceChannel.id }, 'Joining voice channel');
 
+    connection.on('debug', (message) => this.#log.trace(message));
+    connection.on('stateChange', (from, to) =>
+      this.#log.debug({ from: from.status, to: to.status }, 'Voice connection state changed'),
+    );
     connection.on(VoiceConnectionStatus.Disconnected, () => {
       // Moving channels briefly disconnects; only give up if it doesn't recover
       Promise.race([
         entersState(connection, VoiceConnectionStatus.Signalling, RECONNECT_TIMEOUT_MS),
         entersState(connection, VoiceConnectionStatus.Connecting, RECONNECT_TIMEOUT_MS),
       ]).catch(() => {
+        this.#log.warn('Voice connection did not recover after disconnecting; leaving');
         if (this.#connection === connection) this.stop();
       });
     });
@@ -142,7 +157,7 @@ export class MusicQueue extends EventEmitter<QueueEvents> {
       if (this.#connection === connection) this.stop();
     });
     connection.on('error', (err) => {
-      console.error(`[${this.guildId}] Voice connection error:`, err);
+      this.#log.error({ err }, 'Voice connection error');
       if (this.#connection === connection) this.stop();
     });
     connection.subscribe(this.#player);
@@ -150,6 +165,7 @@ export class MusicQueue extends EventEmitter<QueueEvents> {
     try {
       await entersState(connection, VoiceConnectionStatus.Ready, CONNECT_TIMEOUT_MS);
     } catch (err) {
+      this.#log.error({ err }, 'Voice connection did not become ready');
       if (this.#connection === connection) this.stop();
       throw err;
     }
@@ -160,6 +176,14 @@ export class MusicQueue extends EventEmitter<QueueEvents> {
    */
   enqueue(...tracks: Track[]): void {
     this.#tracks.push(...tracks);
+    this.#log.info(
+      {
+        added: tracks.length,
+        titles: tracks.slice(0, 3).map((track) => track.title),
+        queued: this.#tracks.length,
+      },
+      'Tracks enqueued',
+    );
     if (!this.#current) void this.#playNext();
     else if (this.#resource) this.#startPrefetch();
   }
@@ -179,6 +203,7 @@ export class MusicQueue extends EventEmitter<QueueEvents> {
    */
   skip(): void {
     if (!this.#current) return;
+    this.#log.info({ track: this.#current.title }, 'Skipping track');
     this.#looping = false;
     this.#skipping = true;
     this.#player.stop(true);
@@ -187,6 +212,7 @@ export class MusicQueue extends EventEmitter<QueueEvents> {
   /** Toggles looping of the current track; returns the new state */
   toggleLoop(): boolean {
     this.#looping = !this.#looping;
+    this.#log.info({ looping: this.#looping }, 'Loop toggled');
     return this.#looping;
   }
 
@@ -194,6 +220,7 @@ export class MusicQueue extends EventEmitter<QueueEvents> {
   pause(): boolean {
     if (this.#paused) return false;
     this.#paused = true;
+    this.#log.info('Paused');
     this.#player.pause();
     return true;
   }
@@ -202,6 +229,7 @@ export class MusicQueue extends EventEmitter<QueueEvents> {
   resume(): boolean {
     if (!this.#paused) return false;
     this.#paused = false;
+    this.#log.info('Resumed');
     this.#player.unpause();
     return true;
   }
@@ -210,6 +238,10 @@ export class MusicQueue extends EventEmitter<QueueEvents> {
    * Stops playback, clears the queue and leaves the voice channel
    */
   stop(): void {
+    this.#log.info(
+      { dropped: this.#tracks.length, current: this.#current?.title },
+      'Stopping queue',
+    );
     this.#generation++;
     this.#clearIdleTimer();
 
@@ -235,6 +267,10 @@ export class MusicQueue extends EventEmitter<QueueEvents> {
   async #playNext(): Promise<void> {
     const track = this.#tracks.shift();
     if (!track) {
+      this.#log.info(
+        { idleTimeoutMs: this.idleTimeoutMs },
+        'Queue finished; waiting for more tracks',
+      );
       this.#current = null;
       this.#releaseStream();
       this.#discardPrefetch();
@@ -256,6 +292,7 @@ export class MusicQueue extends EventEmitter<QueueEvents> {
       audio = await this.#load(track);
     } catch (err) {
       if (generation !== this.#generation) return;
+      this.#log.error({ err, track: track.title, id: track.id }, 'Failed to load track');
       this.#failTrack(track, err);
       await this.#playNext();
       return;
@@ -270,13 +307,46 @@ export class MusicQueue extends EventEmitter<QueueEvents> {
 
     stream.on('error', (err) => {
       if (generation !== this.#generation) return;
+      this.#log.error({ err, track: track.title, id: track.id }, 'Stream error during playback');
       this.#failTrack(track, err);
       this.#player.stop(true);
     });
 
     this.#stream = stream;
-    this.#resource = createAudioResource(stream, { inputType: type, metadata: track });
-    this.#player.play(this.#resource);
+    const resource = createAudioResource(stream, { inputType: type, metadata: track });
+    this.#resource = resource;
+    this.#log.info(
+      {
+        track: track.title,
+        id: track.id,
+        inputType: type,
+        // Anything other than a pass-through Opus type is decoded and re-encoded in this process
+        transcoded: resource.edges?.length ? resource.edges.map((edge) => edge.type) : null,
+        sourceBuffered: stream.readableLength,
+        sourceHighWaterMark: stream.readableHighWaterMark,
+      },
+      'Creating audio resource',
+    );
+    stream.once('end', () => this.#log.debug({ id: track.id }, 'Source stream ended'));
+    stream.once('close', () =>
+      this.#log.debug({ id: track.id, buffered: stream.readableLength }, 'Source stream closed'),
+    );
+    resource.playStream.once('end', () =>
+      this.#log.debug({ id: track.id, playedMs: resource.playbackDuration }, 'Audio fully read'),
+    );
+    resource.playStream.on('error', (err) =>
+      this.#log.error({ err, id: track.id }, 'Audio pipeline error'),
+    );
+    this.#monitor = new PlaybackMonitor(
+      this.#log,
+      () => this.#samplePlayback(resource, stream),
+      track.durationMs,
+    );
+    this.#player.play(resource);
+    this.#log.info(
+      { track: track.title, id: track.id, durationMs: track.durationMs },
+      'Track started',
+    );
     this.emit('trackStart', track);
     this.#startPrefetch();
   }
@@ -287,14 +357,17 @@ export class MusicQueue extends EventEmitter<QueueEvents> {
   async #load(track: Track): Promise<AudioStream> {
     const prefetch = this.#prefetch;
     if (prefetch?.track !== track) return this.audio.stream(track.id);
+    this.#log.debug({ id: track.id }, 'Using prefetched stream');
 
     this.#prefetch = null;
     try {
       const audio = await prefetch.load;
       if (!prefetch.failed) return audio;
+      this.#log.warn({ id: track.id }, 'Prefetched stream errored; loading again');
       audio.stream.destroy();
-    } catch {
+    } catch (err) {
       // It may have failed on a passing problem long ago; try once more below
+      this.#log.warn({ err, id: track.id }, 'Prefetch failed; loading again');
     }
     return this.audio.stream(track.id);
   }
@@ -308,14 +381,16 @@ export class MusicQueue extends EventEmitter<QueueEvents> {
     this.#discardPrefetch();
     if (!next) return;
 
+    this.#log.debug({ id: next.id, track: next.title }, 'Prefetching next track');
     const prefetch: Prefetch = { track: next, load: this.audio.stream(next.id), failed: false };
     prefetch.load.then(
       ({ stream }) => {
-        stream.on('error', () => {
+        stream.on('error', (err) => {
           prefetch.failed = true;
+          this.#log.warn({ err, id: next.id }, 'Prefetched stream errored');
         });
       },
-      () => {},
+      (err: unknown) => this.#log.warn({ err, id: next.id }, 'Prefetch failed'),
     );
     this.#prefetch = prefetch;
   }
@@ -337,14 +412,53 @@ export class MusicQueue extends EventEmitter<QueueEvents> {
   #onTrackFinished(): void {
     const finished = this.#current;
     if (!finished || this.#resource?.metadata !== finished) return;
+    this.#endMonitor(this.#skipping ? 'skipped' : 'finished');
     this.#resource = null;
+    this.#log.info({ track: finished.title }, 'Track finished');
 
     const replay = this.#looping && !this.#skipping;
     this.#skipping = false;
     void (replay ? this.#play(finished) : this.#playNext());
   }
 
+  /** Reads everything the playback monitor needs from the player, resource and connection */
+  #samplePlayback(resource: AudioResource<Track>, source: Readable): PlaybackSample {
+    const state = this.#player.state;
+    const playing = state.status === AudioPlayerStatus.Playing;
+    const ping = this.#connection?.ping;
+    return {
+      playing,
+      playedMs: resource.playbackDuration,
+      playerMs: 'playbackDuration' in state ? state.playbackDuration : resource.playbackDuration,
+      missedFrames: 'missedFrames' in state ? state.missedFrames : 0,
+      sourceBuffered: source.readableLength,
+      packetsBuffered: resource.playStream.readableLength,
+      sourceEnded: source.readableEnded,
+      playerStatus: state.status,
+      voiceStatus: this.#connection?.state.status ?? null,
+      pingWs: ping?.ws ?? null,
+      pingUdp: ping?.udp ?? null,
+    };
+  }
+
+  /** Stops the playback monitor and logs how the track went */
+  #endMonitor(reason: string): void {
+    const monitor = this.#monitor;
+    this.#monitor = null;
+    if (!monitor) return;
+    const summary = monitor.stop();
+    const track = this.#current;
+    // Ending far short of the track's length points at a stream that cut out early
+    const early = reason === 'finished' && summary.playedMs < summary.expectedMs * 0.9;
+    const level = early || summary.silenceMs >= 100 || summary.starvedSamples > 0 ? 'warn' : 'info';
+    this.#log[level](
+      { track: track?.title, id: track?.id, reason, ...summary },
+      'Playback summary',
+    );
+  }
+
   #releaseStream(): void {
+    this.#endMonitor('released');
     this.#stream?.destroy();
     this.#stream = null;
     this.#resource = null;

@@ -6,6 +6,8 @@ export const COOKIES_PATH = './cookies.json';
 export const GUILD_DATA_PATH = './data/guild.json';
 /** cookies.json converted for yt-dlp, rewritten on every start */
 export const YT_DLP_COOKIES_PATH = './data/yt-dlp-cookies.txt';
+/** Rotated log files are written here */
+export const LOG_DIR = './data/logs';
 
 const settingsSchema = z.looseObject({
   TOKEN: z.string().min(1, 'TOKEN is required'),
@@ -15,6 +17,9 @@ const settingsSchema = z.looseObject({
     .string()
     .nullish()
     .transform((proxy) => proxy || null),
+  /** trace, debug, info, warn, error or fatal; LOG_LEVEL in the environment takes priority */
+  LOG_LEVEL: z.string().nullish(),
+  LOG_FILE_LEVEL: z.string().nullish(),
 });
 
 const cookieSchema = z.looseObject({ name: z.string(), value: z.string() });
@@ -42,6 +47,8 @@ export interface Config {
   ownerId: string;
   defaultPrefix: string;
   proxy: string | null;
+  logLevel: string | null;
+  logFileLevel: string | null;
   cookies: Cookies | null;
 }
 
@@ -83,6 +90,8 @@ export async function loadConfig(
     ownerId: settings.data.OWNERID,
     defaultPrefix: settings.data.PREFIX,
     proxy: settings.data.PROXY,
+    logLevel: settings.data.LOG_LEVEL ?? null,
+    logFileLevel: settings.data.LOG_FILE_LEVEL ?? null,
     cookies,
   };
 }

@@ -3,6 +3,9 @@ import type { BoomBot } from '../bot.js';
 import { commandsByName } from '../commands/index.js';
 import type { CommandContext } from '../commands/types.js';
 import { notice } from '../ui/embeds.js';
+import { getLogger } from '../logger.js';
+
+const log = getLogger('events');
 
 export async function onInteractionCreate(bot: BoomBot, interaction: Interaction): Promise<void> {
   if (!interaction.isChatInputCommand() || !interaction.inCachedGuild()) return;
@@ -25,14 +28,25 @@ export async function onInteractionCreate(bot: BoomBot, interaction: Interaction
     notify: (text, tone) => reply(notice(text, tone)),
   };
 
+  log.debug(
+    { command: interaction.commandName, guildId: interaction.guildId, userId: interaction.user.id },
+    'Command received',
+  );
+
   try {
     for (const precondition of command.preconditions ?? []) {
       const error = precondition(ctx);
-      if (error) return await ctx.notify(error, 'error');
+      if (error) {
+        log.debug({ command: interaction.commandName, reason: error }, 'Command rejected');
+        return await ctx.notify(error, 'error');
+      }
     }
     await command.execute(ctx);
   } catch (err) {
-    console.error(`Error running /${interaction.commandName}:`, err);
+    log.error(
+      { err, command: interaction.commandName, guildId: interaction.guildId },
+      `Error running /${interaction.commandName}`,
+    );
     await ctx.notify('Something went wrong running that command.', 'error').catch(() => {});
   }
 }

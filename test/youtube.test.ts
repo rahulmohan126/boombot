@@ -133,3 +133,18 @@ describe('toNetscapeCookies', () => {
     );
   });
 });
+
+describe('streamAudio logging', () => {
+  it('does not suppress yt-dlp messages, so the chosen format can be logged', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'boombot-ytdlp-args-'));
+    try {
+      const binary = join(dir, 'echo-args');
+      await writeFile(binary, '#!/bin/sh\necho "$@"\n', { mode: 0o755 });
+      const output = await text(await streamAudio('abc123', { binary }));
+      expect(output).not.toContain('--quiet');
+      expect(output).toContain('--no-progress');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});

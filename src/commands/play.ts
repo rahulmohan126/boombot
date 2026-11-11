@@ -5,6 +5,9 @@ import { card } from '../ui/embeds.js';
 import { formatDuration } from '../ui/format.js';
 import { VideoUnavailableError, type ResolveResult } from '../youtube/YouTubeService.js';
 import type { Command, CommandContext } from './types.js';
+import { getLogger } from '../logger.js';
+
+const log = getLogger('commands');
 
 /**
  * Checks the member's and bot's voice state; returns an error message if music can't be played
@@ -68,7 +71,7 @@ export const play: Command = {
           'error',
         );
       }
-      console.error('Failed to resolve query:', err);
+      log.error({ err, query, guildId: interaction.guildId }, 'Failed to resolve query');
       return notify('🆘 I could not obtain any search results.', 'error');
     }
 
@@ -80,7 +83,7 @@ export const play: Command = {
       const textChannel = interaction.channel?.isSendable() ? interaction.channel : null;
       await queue.connect(member.voice.channel!, textChannel);
     } catch (err) {
-      console.error('Failed to join voice channel:', err);
+      log.error({ err, guildId: interaction.guildId }, 'Failed to join voice channel');
       return notify('Could not join voice channel', 'error');
     }
 

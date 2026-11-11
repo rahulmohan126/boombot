@@ -1,10 +1,13 @@
 import type { Readable } from 'node:stream';
-import { demuxProbe, type StreamType } from '@discordjs/voice';
+import { demuxProbe, StreamType } from '@discordjs/voice';
 import { Innertube, YTNodes } from 'youtubei.js';
 import type { Cookies } from '../config.js';
+import { getLogger, sanitizeUrl } from '../logger.js';
 import { createProxyFetch, toCookieHeader } from './http.js';
 import { parsePlaylistId, parseVideoId } from './url.js';
 import { streamAudio, writeCookieFile } from './ytdlp.js';
+
+const log = getLogger('youtube');
 
 /** Number of playlist videos whose details are fetched concurrently */
 const PLAYLIST_CONCURRENCY = 5;
@@ -63,6 +66,7 @@ export class YouTubeService implements AudioSource {
    * Switches to a new proxy (or none); the client is recreated on next use
    */
   setProxy(proxy: string | null): void {
+    log.info({ proxy: sanitizeUrl(proxy) }, 'Proxy changed');
     this.proxy = proxy;
     this.#client = null;
   }
@@ -88,6 +92,7 @@ export class YouTubeService implements AudioSource {
   async resolve(query: string): Promise<ResolveResult> {
     const playlistId = parsePlaylistId(query);
     const videoId = parseVideoId(query);
+    log.debug({ query, playlistId, videoId }, 'Resolving query');
 
     if (playlistId) {
       try {
@@ -103,6 +108,7 @@ export class YouTubeService implements AudioSource {
     }
 
     const searchResultId = await this.search(query);
+    log.debug({ query, searchResultId }, 'Search finished');
     return searchResultId
       ? { kind: 'video', video: await this.getVideo(searchResultId) }
       : { kind: 'none' };
@@ -114,6 +120,7 @@ export class YouTubeService implements AudioSource {
     const details = info.basic_info;
 
     if (info.playability_status?.status !== 'OK' || details.is_private) {
+      log.warn({ videoId, status: info.playability_status?.status }, 'Video unavailable');
       throw new VideoUnavailableError(videoId, 'unavailable');
     }
     if (details.is_live || details.is_upcoming || !details.duration) {
@@ -166,10 +173,28 @@ export class YouTubeService implements AudioSource {
    * Streams the best available audio for a video, preferring Opus
    */
   async stream(videoId: string): Promise<AudioStream> {
+    const startedAt = Date.now();
     const audio = await streamAudio(videoId, { cookieFile: this.#cookieFile, proxy: this.proxy });
+    const downloadStartedMs = Date.now() - startedAt;
     try {
-      return await demuxProbe(audio);
+      const probed = await demuxProbe(audio);
+      // Anything but Opus/WebM is transcoded by ffmpeg, which is far heavier on the CPU
+      const message =
+        probed.type === StreamType.Arbitrary ? 'Audio will be transcoded' : 'Audio stream ready';
+      log[probed.type === StreamType.Arbitrary ? 'warn' : 'info'](
+        {
+          videoId,
+          streamType: probed.type,
+          downloadStartedMs,
+          probeMs: Date.now() - startedAt - downloadStartedMs,
+          totalMs: Date.now() - startedAt,
+          buffered: probed.stream.readableLength,
+        },
+        message,
+      );
+      return probed;
     } catch (err) {
+      log.error({ err, videoId }, 'Could not detect audio stream format');
       audio.destroy();
       throw err;
     }

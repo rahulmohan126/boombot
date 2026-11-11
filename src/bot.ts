@@ -5,10 +5,13 @@ import { onInteractionCreate } from './events/interactionCreate.js';
 import { onReady } from './events/ready.js';
 import { onVoiceStateUpdate } from './events/voiceStateUpdate.js';
 import { GuildStore } from './guilds/GuildStore.js';
+import { flushLogger, getLogger } from './logger.js';
 import { MusicQueue } from './music/MusicQueue.js';
 import { QueueManager } from './music/QueueManager.js';
 import { card, notice } from './ui/embeds.js';
 import { YouTubeService } from './youtube/YouTubeService.js';
+
+const log = getLogger('bot');
 
 /**
  * Composition root: owns the Discord client and the bot's services
@@ -36,14 +39,19 @@ export class BoomBot {
     // Create the YouTube client up front so the first /play is fast
     this.youtube
       .client()
-      .catch((err: unknown) => console.error('Failed to create YouTube client:', err));
+      .then(() => log.debug('YouTube client ready'))
+      .catch((err: unknown) => log.error({ err }, 'Failed to create YouTube client'));
+    log.info('Logging in to Discord');
     await this.client.login(this.config.token);
   }
 
   async shutdown(): Promise<void> {
+    log.info('Stopping queues');
     this.queues.stopAll();
     await this.client.destroy();
     await this.guilds.save();
+    log.info('Shutdown complete');
+    flushLogger();
   }
 
   updatePresence(): void {
@@ -68,11 +76,11 @@ export class BoomBot {
             member: track.requestedBy,
           }),
         )
-        .catch((err: unknown) => console.error('Failed to announce track:', err));
+        .catch((err: unknown) => log.error({ err, guildId }, 'Failed to announce track'));
     });
 
     queue.on('trackError', (track, err) => {
-      console.error(`Stream error for ${track.url}:`, err);
+      log.error({ err, guildId, url: track.url }, 'Track failed to play');
       queue.textChannel
         ?.send(
           notice(
@@ -80,7 +88,9 @@ export class BoomBot {
             'error',
           ),
         )
-        .catch((sendErr: unknown) => console.error('Failed to send error notice:', sendErr));
+        .catch((sendErr: unknown) =>
+          log.error({ err: sendErr, guildId }, 'Failed to send error notice'),
+        );
     });
 
     return queue;
@@ -94,7 +104,7 @@ export class BoomBot {
       ) =>
       (...args: Args) => {
         handler(this, ...args).catch((err: unknown) =>
-          console.error(`Error in ${name} handler:`, err),
+          log.error({ err }, `Error in ${name} handler`),
         );
       };
 
@@ -102,7 +112,17 @@ export class BoomBot {
     this.client.on(Events.InteractionCreate, handle('interactionCreate', onInteractionCreate));
     this.client.on(Events.VoiceStateUpdate, handle('voiceStateUpdate', onVoiceStateUpdate));
     this.client.on(Events.GuildCreate, handle('guildCreate', onGuildCreate));
-    this.client.on(Events.Error, (err) => console.error('Client error:', err));
-    this.client.on(Events.ShardDisconnect, () => console.error('——————— DISCONNECTED ——————'));
+    this.client.on(Events.Error, (err) => log.error({ err }, 'Client error'));
+    this.client.on(Events.Warn, (message) => log.warn(message));
+    this.client.on(Events.Debug, (message) => log.trace(message));
+    this.client.on(Events.ShardDisconnect, (event, shardId) =>
+      log.warn({ code: event.code, shardId }, 'Shard disconnected'),
+    );
+    this.client.on(Events.ShardReconnecting, (shardId) =>
+      log.info({ shardId }, 'Shard reconnecting'),
+    );
+    this.client.on(Events.ShardResume, (shardId, replayed) =>
+      log.info({ shardId, replayed }, 'Shard resumed'),
+    );
   }
 }

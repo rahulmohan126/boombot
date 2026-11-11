@@ -1,6 +1,6 @@
 {
   "name": "boombot",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "A music bot for discord",
   "type": "module",
   "main": "dist/index.js",
@@ -13,7 +13,10 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
-    "docker:publish": "docker buildx build --platform linux/amd64,linux/arm64 --pull --no-cache -t rahulmohan126/boombot:$npm_package_version -t rahulmohan126/boombot:latest --push ."
+    "docker:publish": "docker buildx build --platform linux/amd64,linux/arm64 --pull --no-cache -t rahulmohan126/boombot:$npm_package_version -t rahulmohan126/boombot:latest --push .",
+    "docker:build:local": "docker build --platform linux/arm64 -t boombot:local .",
+    "docker:run:local": "docker run --rm --name boombot-local --platform linux/arm64 -v \"$PWD/settings.json:/boombot/settings.json\" -v \"$PWD/cookies.json:/boombot/cookies.json\" -v \"$PWD/data:/boombot/data\" boombot:local",
+    "docker:local": "npm run docker:build:local && npm run docker:run:local"
   },
   "engines": {
     "node": ">=24.22.1"
@@ -33,6 +36,9 @@
     "@discordjs/voice": "^0.19.2",
     "discord.js": "^14.27.0",
     "ffmpeg-static": "^5.3.0",
+    "pino": "^10.4.0",
+    "pino-pretty": "^13.2.0",
+    "pino-roll": "^4.0.0",
     "undici": "^7.30.0",
     "youtubei.js": "^18.1.0",
     "zod": "^4.6.5"
