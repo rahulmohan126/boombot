@@ -39,6 +39,12 @@ export function streamAudio(
     '--quiet',
     '--no-warnings',
     '--no-playlist',
+    // YouTube's signature challenges need a JS runtime; yt-dlp only enables deno by default.
+    // Without one, most formats are hidden and it fails with "Requested format is not available".
+    '--js-runtimes',
+    'node',
+    '--remote-components',
+    'ejs:github',
     '-f',
     'bestaudio[acodec=opus]/bestaudio/best',
     '-o',
