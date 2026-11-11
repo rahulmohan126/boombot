@@ -1,5 +1,5 @@
 # Build stage: install all dependencies and compile TypeScript
-FROM node:22-bookworm-slim AS build
+FROM node:24.22.1-bookworm-slim AS build
 WORKDIR /boombot
 
 # @discordjs/opus has no prebuilt binary for this Node/glibc combination, so it compiles from
@@ -16,7 +16,7 @@ COPY src src
 RUN npm run build && npm prune --omit=dev
 
 # Runtime stage: compiled output and production dependencies only
-FROM node:22-bookworm-slim
+FROM node:24.22.1-bookworm-slim
 ENV NODE_ENV=production
 WORKDIR /boombot
 
