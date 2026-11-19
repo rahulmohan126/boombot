@@ -8,12 +8,17 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends python3 make g++ \
   && rm -rf /var/lib/apt/lists/*
 
-COPY package.json package-lock.json ./
-RUN npm ci
+# pnpm comes from Corepack, pinned by the packageManager field in package.json.
+# pnpm-workspace.yaml carries allowBuilds, which lets the @discordjs/opus and ffmpeg-static install scripts run.
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 CI=true
+RUN corepack enable pnpm
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile
 
 COPY tsconfig.json tsconfig.build.json ./
 COPY src src
-RUN npm run build && npm prune --omit=dev
+RUN pnpm build && pnpm prune --prod
 
 # Runtime stage: compiled output and production dependencies only
 FROM node:24.22.1-bookworm-slim

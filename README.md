@@ -61,9 +61,10 @@ If YouTube blocks playback (age-restricted videos, "sign in to confirm you're no
 ### 4. Install and run
 
 ```bash
-npm install
-npm run build
-npm start
+corepack enable pnpm   # once, if pnpm isn't installed
+pnpm install
+pnpm build
+pnpm start
 ```
 
 Per-server settings are stored in `data/guild.json`.
@@ -108,14 +109,14 @@ jq -c 'select(.level == "error" or .level == "fatal")' data/logs/*.log
 
 ## Development
 
-| Script              | Description                             |
-| ------------------- | --------------------------------------- |
-| `npm run dev`       | Run from source with auto-restart (tsx) |
-| `npm run build`     | Compile to `dist/`                      |
-| `npm test`          | Run the unit tests (Vitest)             |
-| `npm run lint`      | Lint with ESLint                        |
-| `npm run format`    | Format with Prettier                    |
-| `npm run typecheck` | Type-check without emitting             |
+| Script           | Description                             |
+| ---------------- | --------------------------------------- |
+| `pnpm dev`       | Run from source with auto-restart (tsx) |
+| `pnpm build`     | Compile to `dist/`                      |
+| `pnpm test`      | Run the unit tests (Vitest)             |
+| `pnpm lint`      | Lint with ESLint                        |
+| `pnpm format`    | Format with Prettier                    |
+| `pnpm typecheck` | Type-check without emitting             |
 
 ### Project structure
 
