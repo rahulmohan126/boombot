@@ -1,6 +1,6 @@
 {
   "name": "boombot",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "A music bot for discord",
   "type": "module",
   "main": "dist/index.js",
@@ -32,28 +32,28 @@
   },
   "homepage": "https://github.com/rahulmohan126/BoomBot#readme",
   "dependencies": {
-    "@discordjs/opus": "^0.10.0",
+    "@discordjs/opus": "^0.11.0",
     "@discordjs/voice": "^0.19.2",
-    "discord.js": "^14.27.0",
+    "discord.js": "^14.28.1",
     "ffmpeg-static": "^5.3.0",
     "pino": "^10.4.0",
     "pino-pretty": "^13.2.0",
     "pino-roll": "^4.0.0",
-    "undici": "^7.30.0",
-    "youtubei.js": "^18.1.0",
-    "zod": "^4.6.5"
+    "undici": "^8.12.4",
+    "youtubei.js": "^18.3.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/node": "^24.0.0",
-    "eslint": "^10.12.0",
+    "@types/node": "^24.19.2",
+    "eslint": "^10.15.0",
     "eslint-config-prettier": "^10.1.8",
-    "prettier": "^3.9.9",
+    "prettier": "^3.10.1",
     "sonic-boom": "^4.2.1",
     "tsx": "^4.23.15",
-    "typescript": "~6.0",
-    "typescript-eslint": "^8.71.1",
-    "vitest": "^5.0.3"
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.73.0",
+    "vitest": "^5.1.0"
   },
-  "packageManager": "pnpm@12.18.0"
+  "packageManager": "pnpm@12.21.0"
 }

@@ -2,3 +2,8 @@ allowBuilds:
   '@discordjs/opus': true
   esbuild: false
   ffmpeg-static: true
+
+# @discordjs/node-pre-gyp@0.4.5 (install-time dep of @discordjs/opus) pins tar@^6, which has
+# multiple path-traversal/DoS advisories. tar 7 keeps the CJS tar.extract() API it uses.
+overrides:
+  '@discordjs/node-pre-gyp>tar': ^7.5.23
