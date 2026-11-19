@@ -94,7 +94,6 @@ describe('writeCookieFile', () => {
   it('writes a private Netscape cookie file, creating its directory', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'boombot-cookies-'));
     try {
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
       const file = writeCookieFile([{ name: 'A', value: '1' }], join(dir, 'data', 'cookies.txt'))!;
       expect(await readFile(file, 'utf8')).toBe(toNetscapeCookies([{ name: 'A', value: '1' }]));
       expect((await stat(file)).mode & 0o777).toBe(0o600);
