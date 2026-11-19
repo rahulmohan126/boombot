@@ -1,6 +1,6 @@
 import type { Readable } from 'node:stream';
 import { demuxProbe, StreamType } from '@discordjs/voice';
-import { Innertube, YTNodes } from 'youtubei.js';
+import { type Helpers, Innertube, YTNodes } from 'youtubei.js';
 import type { Cookies } from '../config.js';
 import { getLogger, sanitizeUrl } from '../logger.js';
 import { createProxyFetch, toCookieHeader } from './http.js';
@@ -11,6 +11,17 @@ const log = getLogger('youtube');
 
 /** Number of playlist videos whose details are fetched concurrently */
 const PLAYLIST_CONCURRENCY = 5;
+
+/**
+ * Gets the video ID of a search result or playlist entry, if it is a video. YouTube serves
+ * videos either as classic renderers or as lockup view models, so both are accepted.
+ */
+export function videoIdOf(node: Helpers.YTNode): string | null {
+  if (node.is(YTNodes.Video)) return node.video_id;
+  if (node.is(YTNodes.PlaylistVideo)) return node.id;
+  if (node.is(YTNodes.LockupView) && node.content_type === 'VIDEO') return node.content_id ?? null;
+  return null;
+}
 
 export interface VideoDetails {
   id: string;
@@ -146,9 +157,8 @@ export class YouTubeService implements AudioSource {
     const ids: string[] = [];
     for (;;) {
       for (const item of page.items) {
-        if (item.is(YTNodes.PlaylistVideo)) ids.push(item.id);
-        else if (item.is(YTNodes.LockupView) && item.content_type === 'VIDEO')
-          ids.push(item.content_id);
+        const id = videoIdOf(item);
+        if (id) ids.push(id);
       }
       if (!page.has_continuation) break;
       page = await page.getContinuation();
@@ -166,7 +176,11 @@ export class YouTubeService implements AudioSource {
   async search(query: string): Promise<string | null> {
     const yt = await this.client();
     const results = await yt.search(query, { type: 'video' });
-    return results.results.firstOfType(YTNodes.Video)?.video_id ?? null;
+    for (const result of results.results) {
+      const id = videoIdOf(result);
+      if (id) return id;
+    }
+    return null;
   }
 
   /**
